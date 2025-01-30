@@ -1,28 +1,7 @@
-# pandas-ta from GitHub
-git+https://github.com/twopirllc/pandas-ta.git
-
-# python-binance from GitHub
-git+https://github.com/sammchardy/python-binance.git
-
-# pandas from GitHub
-git+https://github.com/pandas-dev/pandas.git
-
+streamlit==1.15.0
+pandas==1.5.3
+plotly==5.15.0
+pytz==2023.3
 numpy==1.26.4
-
-
-
-
-# pydantic from GitHub
-git+https://github.com/pydantic/pydantic.git
-
-# python-dotenv from GitHub
-git+https://github.com/theskumar/python-dotenv.git
-
-# textblob from GitHub
-git+https://github.com/sloria/TextBlob.git
-
-# python-json-logger from GitHub
-git+https://github.com/madzak/python-json-logger.git
-
-# termcolor from GitHub
-git+https://github.com/termcolor/termcolor.git
+scipy==1.11.2
+# Add other dependencies as needed

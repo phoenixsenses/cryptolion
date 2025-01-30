@@ -1,7 +1,2 @@
-# Ignore Python cache
-__pycache__/
-*.pyc
-*.pyo
-
-# Ignore environment files
 .env
+trading_bot.log

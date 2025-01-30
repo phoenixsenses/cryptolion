@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# run_trading_bot.sh
+# This script manages virtual environments, proxy settings, and runs the trading bot.
+
+# -------------------------------
+# Function Definitions
+# -------------------------------
+
+# Function to deactivate all active environments
+deactivate_all_envs() {
+    echo "Deactivating all active environments..."
+
+    # Deactivate Conda environment if active
+    if [[ "$CONDA_DEFAULT_ENV" != "" ]]; then
+        echo "Deactivating Conda environment: $CONDA_DEFAULT_ENV"
+        conda deactivate
+    fi
+
+    # Deactivate virtualenv if active
+    if [[ "$VIRTUAL_ENV" != "" ]]; then
+        echo "Deactivating virtual environment: $VIRTUAL_ENV"
+        deactivate
+    fi
+
+    echo "All environments deactivated."
+}
+
+# Function to prevent Conda's base environment from auto-activating
+prevent_conda_auto_activate() {
+    echo "Configuring Conda to prevent auto-activation of the base environment..."
+    conda config --set auto_activate_base false
+    echo "Conda auto-activation disabled."
+}
+
+# Function to detect and set proxy settings
+handle_proxy_settings() {
+    echo "Checking for existing proxy settings..."
+
+    PROXY_SET=false
+
+    # Check if HTTPS_PROXY or https_proxy is set
+    if [[ -n "$HTTPS_PROXY" || -n "$https_proxy" ]]; then
+        echo "Detected existing HTTPS proxy."
+        PROXY_SET=true
+    fi
+
+    # Check if HTTP_PROXY or http_proxy is set
+    if [[ -n "$HTTP_PROXY" || -n "$http_proxy" ]]; then
+        echo "Detected existing HTTP proxy."
+        PROXY_SET=true
+    fi
+
+    if [[ "$PROXY_SET" = false ]]; then
+        echo "No proxy settings detected."
+
+        # Attempt to detect system proxy settings (macOS only)
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "Attempting to detect system proxy settings on macOS..."
+
+            # Get the primary network service
+            primary_service=$(networksetup -listallnetworkservices | grep -v '*' | head -n 1)
+
+            # Function to parse proxy settings
+            parse_proxy() {
+                local service=$1
+                local proxy_type=$2
+                local proxy_info=$(networksetup -get$proxy_type $service | grep "Enabled: Yes")
+                if [[ $? -eq 0 ]]; then
+                    proxy_server=$(networksetup -get$proxy_type $service | grep "Proxy Server:" | awk '{print $3}')
+                    proxy_port=$(networksetup -get$proxy_type $service | grep "Port:" | awk '{print $2}')
+                    echo "$proxy_server:$proxy_port"
+                else
+                    echo ""
+                fi
+            }
+
+            # Detect HTTPS proxy
+            https_proxy_info=$(parse_proxy "$primary_service" "HTTPSProxy")
+            if [[ -n "$https_proxy_info" ]]; then
+                export HTTPS_PROXY="http://$https_proxy_info"
+                echo "Set HTTPS_PROXY to http://$https_proxy_info"
+                PROXY_SET=true
+            fi
+
+            # Detect HTTP proxy
+            http_proxy_info=$(parse_proxy "$primary_service" "HTTPProxy")
+            if [[ -n "$http_proxy_info" ]]; then
+                export HTTP_PROXY="http://$http_proxy_info"
+                echo "Set HTTP_PROXY to http://$http_proxy_info"
+                PROXY_SET=true
+            fi
+        fi
+    fi
+
+    if [[ "$PROXY_SET" = false ]]; then
+        # Prompt user to enter proxy settings
+        echo "Would you like to set a proxy now? (y/n)"
+        read -r set_proxy
+
+        if [[ "$set_proxy" =~ ^[Yy]$ ]]; then
+            read -p "Enter HTTPS proxy (e.g., http://proxyserver:port): " user_https_proxy
+            read -p "Enter HTTP proxy (e.g., http://proxyserver:port): " user_http_proxy
+
+            if [[ -n "$user_https_proxy" ]]; then
+                export HTTPS_PROXY="$user_https_proxy"
+                echo "Set HTTPS_PROXY to $HTTPS_PROXY"
+            fi
+
+            if [[ -n "$user_http_proxy" ]]; then
+                export HTTP_PROXY="$user_http_proxy"
+                echo "Set HTTP_PROXY to $HTTP_PROXY"
+            fi
+        else
+            echo "Proceeding without setting proxy."
+        fi
+    fi
+}
+
+# Function to activate the project's virtual environment
+activate_project_venv() {
+    PROJECT_VENV=".venv"
+
+    if [[ -d "$PROJECT_VENV" ]]; then
+        echo "Activating project virtual environment: $PROJECT_VENV"
+        source "$PROJECT_VENV/bin/activate"
+        echo "Virtual environment '$PROJECT_VENV' activated."
+    else
+        echo "Error: Virtual environment '$PROJECT_VENV' not found."
+        echo "Please create it using 'python3 -m venv .venv' and install dependencies."
+        exit 1
+    fi
+}
+
+# Function to run the trading bot
+run_trading_bot() {
+    echo "Starting the trading bot..."
+    python trading_bot.py
+}
+
+# -------------------------------
+# Main Execution Flow
+# -------------------------------
+
+# Step 1: Deactivate any active environments
+deactivate_all_envs
+
+# Step 2: Prevent Conda's base environment from auto-activating
+prevent_conda_auto_activate
+
+# Step 3: Handle proxy settings
+handle_proxy_settings
+
+# Step 4: Activate the project's virtual environment
+activate_project_venv
+
+# Step 5: Run the trading bot
+run_trading_bot
