@@ -1,99 +1,226 @@
 {
-  "MIN_NOTIONAL": 10.0,
-  "STARTING_BALANCE": 1000.0,
-  "STRATEGIES": {
-      "StrategyA": {
-          "class": "StrategyA",
-          "DEFAULT_LEVERAGE": 10,
-          "BASE_RISK_PER_TRADE": 0.01,
-          "ATR_MULTIPLIER": 1.5,
-          "RISK_REWARD_RATIO": 2.0,
-          "ADAPTIVE_ATR": true,
-          "DYNAMIC_RISK_ADJUSTMENT": false,
-          "ATR_THRESHOLD": {
-              "LOWER_BOUND": 0.5,
-              "UPPER_BOUND": 1.5
-          },
-          "SENTIMENT_ANALYSIS": {
-              "ENABLED": true,
-              "DATA_SOURCE": ["twitter", "news"],
-              "TWEETS_PER_SYMBOL": 50,
-              "SENTIMENT_THRESHOLD_POSITIVE": 0.1,
-              "SENTIMENT_THRESHOLD_NEGATIVE": -0.1,
-              "ANALYZER": ["TextBlob"],
-              "TREND_ANALYSIS": true,
-              "TREND_WINDOW": 20
-          },
-          "TRADE_DURATION": 60,
-          "strategy_parameters": {
-              "correlation_threshold": 0.7,
-              "reference_symbol": "BTCUSDT",
-              "sma_period": 20,
-              "atr_period": 14,
-              "atr_multiplier": 1.5,
-              "kelly_win_rate": 0.5,
-              "kelly_win_loss_ratio": 1.5
-          }
-      }
-  },
-  "ACTIVE_STRATEGY": "StrategyA",
-  "SYMBOLS_TO_TRADE": {
-      "BTCUSDT": {
-          "symbol": "BTCUSDT",
-          "base_currency": "BTC",
-          "quote_currency": "USDT",
-          "strategy": "StrategyA",
-          "strategy_parameters": {
-              "correlation_threshold": 0.7,
-              "reference_symbol": "BTCUSDT",
-              "sma_period": 20,
-              "atr_period": 14,
-              "atr_multiplier": 1.5,
-              "kelly_win_rate": 0.5,
-              "kelly_win_loss_ratio": 1.5
-          },
-          "risk_parameters": {
-              "DEFAULT_LEVERAGE": 10,
-              "BASE_RISK_PER_TRADE": 0.01
-          },
-          "trade_parameters": {
-              "stop_loss": 0.98,
-              "take_profit": 1.02,
-              "trailing_stop_loss": true
-          },
-          "api_credentials": {
-              "api_key": "your_binance_api_key",
-              "secret_key": "your_binance_secret_key"
-          }
-      },
-      "ETHUSDT": {
-          "symbol": "ETHUSDT",
-          "base_currency": "ETH",
-          "quote_currency": "USDT",
-          "strategy": "StrategyA",
-          "strategy_parameters": {
-              "correlation_threshold": 0.7,
-              "reference_symbol": "ETHUSDT",
-              "sma_period": 20,
-              "atr_period": 14,
-              "atr_multiplier": 1.5,
-              "kelly_win_rate": 0.5,
-              "kelly_win_loss_ratio": 1.5
-          },
-          "risk_parameters": {
-              "DEFAULT_LEVERAGE": 10,
-              "BASE_RISK_PER_TRADE": 0.01
-          },
-          "trade_parameters": {
-              "stop_loss": 0.98,
-              "take_profit": 1.02,
-              "trailing_stop_loss": true
-          },
-          "api_credentials": {
-              "api_key": "your_binance_api_key",
-              "secret_key": "your_binance_secret_key"
-          }
-      }
-  },
-  "USE_TESTNET": false
+    "MIN_NOTIONAL": 10.0,
+    "STARTING_BALANCE": 10000.0,
+    "USE_TESTNET": true,
+    "STRATEGIES": {
+        "StrategyA": {
+            "class": "StrategyA",
+            "DEFAULT_LEVERAGE": 10,
+            "BASE_RISK_PER_TRADE": 0.01,
+            "ATR_MULTIPLIER": 1.5,
+            "RISK_REWARD_RATIO": 2.0,
+            "ADAPTIVE_ATR": true,
+            "DYNAMIC_RISK_ADJUSTMENT": true,
+            "ATR_THRESHOLD": {
+                "LOWER_BOUND": 0.1,
+                "UPPER_BOUND": 0.5
+            },
+            "SENTIMENT_ANALYSIS": {
+                "ENABLED": true,
+                "DATA_SOURCE": ["twitter", "news"],
+                "TWEETS_PER_SYMBOL": 50,
+                "SENTIMENT_THRESHOLD_POSITIVE": 0.1,
+                "SENTIMENT_THRESHOLD_NEGATIVE": -0.1,
+                "ANALYZER": ["textblob"],
+                "TREND_ANALYSIS": true,
+                "TREND_WINDOW": 20
+            },
+            "TRADE_DURATION": 60,
+            "strategy_parameters": {
+                "correlation_threshold": 0.7,
+                "reference_symbol": "BTCUSDT",
+                "sma_period": 20,
+                "atr_period": 14,
+                "atr_multiplier": 1.5,
+                "kelly_win_rate": 0.6,
+                "kelly_win_loss_ratio": 2.0
+            }
+        },
+        "DivergenceStrategy": {
+            "class": "DivergenceStrategy",
+            "DEFAULT_LEVERAGE": 10,
+            "BASE_RISK_PER_TRADE": 0.01,
+            "ATR_MULTIPLIER": 1.5,
+            "RISK_REWARD_RATIO": 2.0,
+            "ADAPTIVE_ATR": true,
+            "DYNAMIC_RISK_ADJUSTMENT": true,
+            "ATR_THRESHOLD": {
+                "LOWER_BOUND": 0.1,
+                "UPPER_BOUND": 0.5
+            },
+            "SENTIMENT_ANALYSIS": {
+                "ENABLED": true,
+                "DATA_SOURCE": ["twitter", "news"],
+                "TWEETS_PER_SYMBOL": 50,
+                "SENTIMENT_THRESHOLD_POSITIVE": 0.1,
+                "SENTIMENT_THRESHOLD_NEGATIVE": -0.1,
+                "ANALYZER": ["textblob"],
+                "TREND_ANALYSIS": true,
+                "TREND_WINDOW": 20
+            },
+            "TRADE_DURATION": 60,
+            "strategy_parameters": {
+                "correlation_threshold": 0.7,
+                "reference_symbol": "BTCUSDT",
+                "sma_period": 20,
+                "atr_period": 14,
+                "atr_multiplier": 1.5,
+                "kelly_win_rate": 0.6,
+                "kelly_win_loss_ratio": 2.0
+            }
+        },
+        "MomentumStrategy": {
+            "class": "MomentumStrategy",
+            "DEFAULT_LEVERAGE": 10,
+            "BASE_RISK_PER_TRADE": 0.01,
+            "ATR_MULTIPLIER": 1.5,
+            "RISK_REWARD_RATIO": 2.0,
+            "ADAPTIVE_ATR": true,
+            "DYNAMIC_RISK_ADJUSTMENT": true,
+            "ATR_THRESHOLD": {
+                "LOWER_BOUND": 0.1,
+                "UPPER_BOUND": 0.5
+            },
+            "SENTIMENT_ANALYSIS": {
+                "ENABLED": true,
+                "DATA_SOURCE": ["twitter", "news"],
+                "TWEETS_PER_SYMBOL": 50,
+                "SENTIMENT_THRESHOLD_POSITIVE": 0.1,
+                "SENTIMENT_THRESHOLD_NEGATIVE": -0.1,
+                "ANALYZER": ["textblob"],
+                "TREND_ANALYSIS": true,
+                "TREND_WINDOW": 20
+            },
+            "TRADE_DURATION": 60,
+            "strategy_parameters": {
+                "correlation_threshold": 0.7,
+                "reference_symbol": "BTCUSDT",
+                "sma_period": 20,
+                "atr_period": 14,
+                "atr_multiplier": 1.5,
+                "kelly_win_rate": 0.6,
+                "kelly_win_loss_ratio": 2.0
+            }
+        },
+        "ArbitrageStrategy": {
+            "class": "ArbitrageStrategy",
+            "DEFAULT_LEVERAGE": 10,
+            "BASE_RISK_PER_TRADE": 0.01,
+            "ATR_MULTIPLIER": 1.5,
+            "RISK_REWARD_RATIO": 2.0,
+            "ADAPTIVE_ATR": false,
+            "DYNAMIC_RISK_ADJUSTMENT": false,
+            "ATR_THRESHOLD": {
+                "LOWER_BOUND": 0.0,
+                "UPPER_BOUND": 0.0
+            },
+            "SENTIMENT_ANALYSIS": {
+                "ENABLED": false,
+                "DATA_SOURCE": [],
+                "TWEETS_PER_SYMBOL": 0,
+                "SENTIMENT_THRESHOLD_POSITIVE": 0.0,
+                "SENTIMENT_THRESHOLD_NEGATIVE": 0.0,
+                "ANALYZER": [],
+                "TREND_ANALYSIS": false,
+                "TREND_WINDOW": 0
+            },
+            "TRADE_DURATION": 60,
+            "strategy_parameters": {
+                "reference_symbol": "BTCBUSD"
+            }
+        }
+    },
+    "ACTIVE_STRATEGY": "StrategyA",
+    "SYMBOLS_TO_TRADE": {
+        "BTCUSDT": {
+            "symbol": "BTCUSDT",
+            "base_currency": "BTC",
+            "quote_currency": "USDT",
+            "strategy": "StrategyA",
+            "strategy_parameters": {
+                "correlation_threshold": 0.7,
+                "reference_symbol": "BTCUSDT",
+                "sma_period": 20,
+                "atr_period": 14,
+                "atr_multiplier": 1.5,
+                "kelly_win_rate": 0.6,
+                "kelly_win_loss_ratio": 2.0
+            },
+            "risk_parameters": {
+                "DEFAULT_LEVERAGE": 10,
+                "BASE_RISK_PER_TRADE": 0.01
+            },
+            "trade_parameters": {
+                "stop_loss": 0.98,
+                "take_profit": 1.02,
+                "trailing_stop_loss": true
+            }
+        },
+        "ETHUSDT": {
+            "symbol": "ETHUSDT",
+            "base_currency": "ETH",
+            "quote_currency": "USDT",
+            "strategy": "DivergenceStrategy",
+            "strategy_parameters": {
+                "correlation_threshold": 0.7,
+                "reference_symbol": "ETHUSDT",
+                "sma_period": 20,
+                "atr_period": 14,
+                "atr_multiplier": 1.5,
+                "kelly_win_rate": 0.6,
+                "kelly_win_loss_ratio": 2.0
+            },
+            "risk_parameters": {
+                "DEFAULT_LEVERAGE": 10,
+                "BASE_RISK_PER_TRADE": 0.01
+            },
+            "trade_parameters": {
+                "stop_loss": 0.98,
+                "take_profit": 1.02,
+                "trailing_stop_loss": true
+            }
+        },
+        "XRPUSDT": {
+            "symbol": "XRPUSDT",
+            "base_currency": "XRP",
+            "quote_currency": "USDT",
+            "strategy": "MomentumStrategy",
+            "strategy_parameters": {
+                "correlation_threshold": 0.7,
+                "reference_symbol": "XRPUSDT",
+                "sma_period": 20,
+                "atr_period": 14,
+                "atr_multiplier": 1.5,
+                "kelly_win_rate": 0.6,
+                "kelly_win_loss_ratio": 2.0
+            },
+            "risk_parameters": {
+                "DEFAULT_LEVERAGE": 10,
+                "BASE_RISK_PER_TRADE": 0.01
+            },
+            "trade_parameters": {
+                "stop_loss": 0.98,
+                "take_profit": 1.02,
+                "trailing_stop_loss": true
+            }
+        },
+        "BTCBUSD": {
+            "symbol": "BTCBUSD",
+            "base_currency": "BTC",
+            "quote_currency": "BUSD",
+            "strategy": "ArbitrageStrategy",
+            "strategy_parameters": {
+                "reference_symbol": "BTCUSDT"
+            },
+            "risk_parameters": {
+                "DEFAULT_LEVERAGE": 10,
+                "BASE_RISK_PER_TRADE": 0.01
+            },
+            "trade_parameters": {
+                "stop_loss": 0.0,
+                "take_profit": 0.0,
+                "trailing_stop_loss": false
+            }
+        }
+    }
 }

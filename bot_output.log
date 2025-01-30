@@ -1,3 +1,10 @@
-  File "/Users/gorkemberkeyuksel/CryptoLion/trading_bot.py", line 656
-    client.https_proxy = {}
-IndentationError: expected an indented block after 'try' statement on line 655
+2025-01-30 18:53:15,076 [INFO] Binance Server Time: {'serverTime': 1738252394962}
+2025-01-30 18:53:15,926 [INFO] Initializing multiplex socket for streams: ['btcusdt@kline_1m', 'btcusdt@depth5@100ms']
+2025-01-30 18:53:15,927 [ERROR] Unexpected error starting multiplex socket: BinanceSocketManager.multiplex_socket() takes 2 positional arguments but 3 were given
+Traceback (most recent call last):
+  File "/Users/gorkemberkeyuksel/CryptoLion/trading_bot.py", line 869, in start_symbol_sockets
+    conn_key = self.bsm.multiplex_socket(streams, process_message)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: BinanceSocketManager.multiplex_socket() takes 2 positional arguments but 3 were given
+2025-01-30 18:53:15,929 [INFO] EnhancedTradingBot is running websockets for: ['BTCUSDT']
+2025-01-30 18:53:15,929 [INFO] Trading bot is now running.

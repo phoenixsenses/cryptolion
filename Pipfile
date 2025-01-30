@@ -1,0 +1,17 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+streamlit = "==1.15.0"
+pandas = "==1.5.3"
+plotly = "==5.15.0"
+pytz = "==2023.3"
+numpy = "==1.26.4"
+scipy = "==1.11.2"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"

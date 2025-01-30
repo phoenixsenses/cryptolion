@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import sys
 import json
@@ -6,32 +5,31 @@ import logging
 import time
 import concurrent.futures
 import signal
-import asyncio
-import random
 from datetime import datetime, timezone
+from typing import Dict, List, Any, Optional
 
 import pandas as pd
 import numpy as np
 import pandas_ta as ta
-
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
-# XGBoost (optional)
+# Optional imports
 try:
     from xgboost import XGBClassifier
     HAVE_XGBOOST = True
 except ImportError:
     HAVE_XGBOOST = False
 
-# Sentiment (optional)
 try:
     from textblob import TextBlob
     HAVE_TEXTBLOB = True
 except ImportError:
     HAVE_TEXTBLOB = False
 
-from typing import Dict, List, Any, Optional
+from pydantic import BaseModel, ValidationError, Field
+from dotenv import load_dotenv  # For loading .env
+
 from logging.handlers import RotatingFileHandler
 from pythonjsonlogger import jsonlogger
 from termcolor import colored
@@ -44,75 +42,36 @@ try:
     from binance.exceptions import BinanceAPIException, BinanceOrderException
 except ImportError as e:
     raise ImportError(
-        "Could not import BinanceSocketManager from binance. "
-        "Please ensure you have python-binance installed.\n"
+        "Could not import Binance modules. Please ensure you have python-binance installed.\n"
         f"{e}"
     )
 
-from pydantic import BaseModel, ValidationError, Field
-from dotenv import load_dotenv  # <-- For loading .env
-
-##############################################################################
+# =============================================================================
 # LOGGING SETUP
-##############################################################################
-logger = logging.getLogger("SuperBotProduction")
+# =============================================================================
+logger = logging.getLogger("CryptoLionBot")
 logger.setLevel(logging.DEBUG)
 
-json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
-file_handler = RotatingFileHandler("trading_bot.log", maxBytes=10*1024*1024, backupCount=2)
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(json_formatter)
+# Prevent adding multiple handlers if they already exist
+if not logger.handlers:
+    # JSON Formatter for file logging
+    json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+    file_handler = RotatingFileHandler("trading_bot.log", maxBytes=10*1024*1024, backupCount=2)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(json_formatter)
 
-console_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)  # Set to INFO to reduce console clutter
-console_handler.setFormatter(console_formatter)
+    # Console Formatter for terminal output
+    console_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)  # Set to INFO to reduce console clutter
+    console_handler.setFormatter(console_formatter)
 
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
-##############################################################################
-# ORDER FLOW & MARKET REGIME (SHORT VERSIONS)
-##############################################################################
-class OrderFlowAnalyzer:
-    def __init__(self):
-        self.last_imbalance = 0.0
-
-    def update_order_book(self, symbol: str, bids: list, asks: list):
-        if not bids or not asks:
-            return
-        best_bid_qty = float(bids[0][1])
-        best_ask_qty = float(asks[0][1])
-        total_qty = best_bid_qty + best_ask_qty
-        if total_qty > 0:
-            self.last_imbalance = (best_bid_qty - best_ask_qty) / total_qty
-
-    def get_latest_imbalance(self):
-        return self.last_imbalance
-
-class MarketRegimeDetector:
-    def __init__(self, lookback=20):
-        self.lookback = lookback
-        self.current_regime = "neutral"
-
-    def detect_regime(self, df: pd.DataFrame) -> str:
-        if len(df) < self.lookback:
-            return "neutral"
-        closes = df["close"].iloc[-self.lookback:]
-        x = np.arange(self.lookback)
-        y = closes.values
-        slope, intercept = np.polyfit(x, y, 1)
-        if slope > 0:
-            self.current_regime = "bull"
-        elif slope < 0:
-            self.current_regime = "bear"
-        else:
-            self.current_regime = "neutral"
-        return self.current_regime
-
-##############################################################################
+# =============================================================================
 # CONFIG, RISK, UTILS
-##############################################################################
+# =============================================================================
 class ATRThresholdModel(BaseModel):
     LOWER_BOUND: float
     UPPER_BOUND: float
@@ -158,10 +117,6 @@ class TradeParametersModel(BaseModel):
     take_profit: float
     trailing_stop_loss: bool
 
-class ApiCredentialsModel(BaseModel):
-    api_key: str
-    secret_key: str
-
 class SymbolModel(BaseModel):
     symbol: str
     base_currency: str
@@ -170,7 +125,6 @@ class SymbolModel(BaseModel):
     strategy_parameters: Optional[StrategyParametersModel] = None
     risk_parameters: RiskParametersModel
     trade_parameters: TradeParametersModel
-    api_credentials: ApiCredentialsModel
 
 class ConfigModel(BaseModel):
     MIN_NOTIONAL: float
@@ -207,6 +161,48 @@ class RiskManager:
             return False
         return True
 
+# =============================================================================
+# ORDER FLOW & MARKET REGIME (SHORT VERSIONS)
+# =============================================================================
+class OrderFlowAnalyzer:
+    def __init__(self):
+        self.last_imbalance = 0.0
+
+    def update_order_book(self, symbol: str, bids: list, asks: list):
+        if not bids or not asks:
+            return
+        best_bid_qty = float(bids[0][1])
+        best_ask_qty = float(asks[0][1])
+        total_qty = best_bid_qty + best_ask_qty
+        if total_qty > 0:
+            self.last_imbalance = (best_bid_qty - best_ask_qty) / total_qty
+
+    def get_latest_imbalance(self) -> float:
+        return self.last_imbalance
+
+class MarketRegimeDetector:
+    def __init__(self, lookback=20):
+        self.lookback = lookback
+        self.current_regime = "neutral"
+
+    def detect_regime(self, df: pd.DataFrame) -> str:
+        if len(df) < self.lookback:
+            return "neutral"
+        closes = df["close"].iloc[-self.lookback:]
+        x = np.arange(self.lookback)
+        y = closes.values
+        slope, intercept = np.polyfit(x, y, 1)
+        if slope > 0:
+            self.current_regime = "bull"
+        elif slope < 0:
+            self.current_regime = "bear"
+        else:
+            self.current_regime = "neutral"
+        return self.current_regime
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
 def compute_atr(df: pd.DataFrame, period: int=14) -> float:
     if len(df) < period:
         return 0.0
@@ -251,9 +247,9 @@ def combined_sentiment_score(symbol: str, cfg: SentimentAnalysisModel) -> float:
         sources += 1
     return total / sources if sources > 0 else 0.0
 
-##############################################################################
+# =============================================================================
 # ML + FEATURE ENGINEERING
-##############################################################################
+# =============================================================================
 class FeatureEngineer:
     @staticmethod
     def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -341,9 +337,9 @@ class XGBPredictor:
         scaled = self.scaler.transform(latest)
         return float(self.model.predict_proba(scaled)[0][1])
 
-##############################################################################
+# =============================================================================
 # STRATEGIES
-##############################################################################
+# =============================================================================
 class BaseStrategy:
     def __init__(self,
                  symbol: str,
@@ -554,7 +550,7 @@ class StrategyA(BaseStrategy):
         xgb_prob = 0.5
         if self.bot:
             ml_prob = self.bot.ml_predictors[self.symbol].predict(df)
-            xgb_prob = self.bot.xgb_predictors[self.symbol].predict(df)
+            xgb_prob = self.bot.xgb_predictors[self.symbol].predict(df) if HAVE_XGBOOST else 0.5
         combined_prob = (ml_prob + xgb_prob) / 2
 
         ml_signal = "HOLD"
@@ -590,13 +586,13 @@ class StrategyA(BaseStrategy):
 
         return final_decision
 
-##############################################################################
+# =============================================================================
 # BASE TRADING BOT
-##############################################################################
+# =============================================================================
 class BaseTradingBot:
     def __init__(self, config: ConfigModel):
         self.config = config
-        load_dotenv()  # <-- Load environment variables from .env
+        load_dotenv()  # Load environment variables from .env
         self.client = self.initialize_binance_client(config)
         self.stop_bot = False
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
@@ -639,26 +635,21 @@ class BaseTradingBot:
 
     def initialize_binance_client(self, config: ConfigModel) -> Client:
         logger.debug("Initializing Binance Client...")
-        # Grab the first symbol's credentials from config
-        try:
-            first_sym = next(iter(config.SYMBOLS_TO_TRADE))
-            creds = config.SYMBOLS_TO_TRADE[first_sym].api_credentials
-        except StopIteration:
-            logger.error("No symbols in config. Exiting.")
-            sys.exit(1)
 
-        # Overriding with environment variables if present
-        env_api_key = os.getenv("BINANCE_API_KEY", creds.api_key)
-        env_sec_key = os.getenv("BINANCE_SECRET_KEY", creds.secret_key)
+        # Read API credentials from environment variables
+        env_api_key = os.getenv("BINANCE_API_KEY")
+        env_sec_key = os.getenv("BINANCE_SECRET_KEY")
+
+        if not env_api_key or not env_sec_key:
+            logger.critical("BINANCE_API_KEY and BINANCE_SECRET_KEY must be set in .env file.")
+            sys.exit(1)
 
         # Initialize the Client without proxies
         try:
-    client.https_proxy = {}
             client = Client(
                 env_api_key,
                 env_sec_key,
                 testnet=config.USE_TESTNET
-                # Removed proxies={}
             )
             logger.debug(f"Client proxies: {client.proxies if hasattr(client, 'proxies') else 'No proxies set'}")
         except Exception as e:
@@ -691,9 +682,13 @@ class BaseTradingBot:
                             "quote_asset_volume","taker_buy_base_asset_volume",
                             "taker_buy_quote_asset_volume"]
             for c in numeric_cols:
-                df[c] = df[c].astype(float)
+                df[c] = pd.to_numeric(df[c], errors='coerce')
+            df.dropna(inplace=True)
             logger.debug(f"Fetched historical data for {symbol}, {len(df)} records.")
             return df
+        except BinanceAPIException as e:
+            logger.error(f"Binance API Exception fetching historical data for {symbol}: {e}", exc_info=True)
+            return pd.DataFrame()
         except Exception as e:
             logger.error(f"Error fetching historical data for {symbol}: {e}", exc_info=True)
             return pd.DataFrame()
@@ -728,9 +723,9 @@ class BaseTradingBot:
             logger.info("Bot shut down.")
             sys.exit(0)
 
-##############################################################################
+# =============================================================================
 # ENHANCED TRADING BOT
-##############################################################################
+# ===============================================================================
 class EnhancedTradingBot(BaseTradingBot):
     def __init__(self, config: ConfigModel):
         super().__init__(config)
@@ -776,7 +771,7 @@ class EnhancedTradingBot(BaseTradingBot):
                 quantity=quantity
             )
             logger.info(colored(
-                f"[RealOrder] {side} {symbol} qty={quantity:.4f}",
+                f"[RealOrder] {side} {symbol} qty={quantity:.6f}",
                 "cyan"
             ))
             return order
@@ -823,7 +818,7 @@ class EnhancedTradingBot(BaseTradingBot):
                     is_final = k.get("x", False)
                     close_price = float(k.get("c", 0.0))
                     if is_final:
-                        logger.debug(f"[Kline final] {symbol} => close={close_price}")
+                        logger.debug(f"[Kline final] {symbol} => close={close_price:.2f}")
                         df = self.fetch_historical_data(symbol, "1m", 100)
                         df = FeatureEngineer.add_technical_features(df)
 
@@ -870,7 +865,8 @@ class EnhancedTradingBot(BaseTradingBot):
 
         try:
             logger.info(f"Initializing multiplex socket for streams: {streams}")
-            conn_key = self.bsm.futures_multiplex_socket(streams, process_message)
+            # Corrected method call: Pass callback as positional argument
+            conn_key = self.bsm.multiplex_socket(streams, process_message)
             self.socket_connections.append(conn_key)
             self.bsm.start()
         except AttributeError as e:
@@ -907,9 +903,9 @@ class EnhancedTradingBot(BaseTradingBot):
         signal.signal(signal.SIGINT, shutdown_handler)
         signal.signal(signal.SIGTERM, shutdown_handler)
 
-##############################################################################
+# =============================================================================
 # MAIN FUNCTION
-##############################################################################
+# =============================================================================
 def load_config(config_path: str) -> ConfigModel:
     try:
         with open(config_path, 'r') as f:

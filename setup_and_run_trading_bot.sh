@@ -14,6 +14,40 @@ set -e
 # Function Definitions
 # =============================================================================
 
+# Function to display usage information
+usage() {
+    echo "Usage: $0 [-d] [-t]"
+    echo "  -d    Enable debug mode"
+    echo "  -t    Use Binance Testnet"
+    exit 1
+}
+
+# Parse command-line options
+DEBUG=0
+TESTNET=0
+
+while getopts ":dt" opt; do
+  case ${opt} in
+    d )
+      DEBUG=1
+      ;;
+    t )
+      TESTNET=1
+      ;;
+    \? )
+      echo "Invalid Option: -$OPTARG" 1>&2
+      usage
+      ;;
+  esac
+done
+shift $((OPTIND -1))
+
+# Enable debugging if requested
+if [ "$DEBUG" -eq 1 ]; then
+    echo "Debug mode enabled."
+    set -x
+fi
+
 # Function to unset proxy environment variables
 unset_proxies() {
     echo "Unsetting proxy environment variables..."
@@ -35,10 +69,10 @@ verify_unset_proxies() {
 
 # Function to add entries to .gitignore if they don't already exist
 update_gitignore() {
-    echo "Ensuring '.env' and 'trading_bot.log' are in .gitignore..."
+    echo "Ensuring '.env', 'trading_bot.log', and 'bot_output.log' are in .gitignore..."
 
     # Define the entries to add
-    local entries=(".env" "trading_bot.log")
+    local entries=(".env" "trading_bot.log" "bot_output.log")
 
     # Iterate over each entry
     for entry in "${entries[@]}"; do
@@ -56,10 +90,65 @@ update_gitignore() {
 activate_virtualenv() {
     if [[ -z "$VIRTUAL_ENV" ]]; then
         echo "Activating virtual environment..."
-        source .venv/bin/activate
-        echo "Virtual environment activated."
+        if [ -d ".venv" ]; then
+            source .venv/bin/activate
+            echo "Virtual environment activated."
+        else
+            echo "Virtual environment '.venv' not found. Creating a new one..."
+            python3 -m venv .venv
+            source .venv/bin/activate
+            echo "Virtual environment created and activated."
+        fi
     else
         echo "Virtual environment is already activated."
+    fi
+}
+
+# Function to setup environment variables in .env
+setup_env() {
+    local env_file=".env"
+
+    if [ ! -f "$env_file" ]; then
+        echo "Creating '$env_file' for environment variables."
+        touch "$env_file"
+    fi
+
+    # Check if API_KEY is set
+    if ! grep -q "^BINANCE_API_KEY=" "$env_file"; then
+        read -p "Enter your Binance API Key: " API_KEY
+        echo "BINANCE_API_KEY=${API_KEY}" >> "$env_file"
+        echo "BINANCE_API_KEY set in '$env_file'."
+    else
+        echo "BINANCE_API_KEY is already set in '$env_file'."
+    fi
+
+    # Check if API_SECRET is set
+    if ! grep -q "^BINANCE_SECRET_KEY=" "$env_file"; then
+        read -sp "Enter your Binance API Secret: " API_SECRET
+        echo
+        echo "BINANCE_SECRET_KEY=${API_SECRET}" >> "$env_file"
+        echo "BINANCE_SECRET_KEY set in '$env_file'."
+    else
+        echo "BINANCE_SECRET_KEY is already set in '$env_file'."
+    fi
+
+    # Set USE_TESTNET flag
+    if [ "$TESTNET" -eq 1 ]; then
+        if grep -q "^USE_TESTNET=" "$env_file"; then
+            sed -i.bak 's/^USE_TESTNET=.*/USE_TESTNET=true/' "$env_file"
+            echo "Updated USE_TESTNET to true in '$env_file'."
+        else
+            echo "USE_TESTNET=true" >> "$env_file"
+            echo "Added USE_TESTNET=true to '$env_file'."
+        fi
+    else
+        if grep -q "^USE_TESTNET=" "$env_file"; then
+            sed -i.bak 's/^USE_TESTNET=.*/USE_TESTNET=false/' "$env_file"
+            echo "Updated USE_TESTNET to false in '$env_file'."
+        else
+            echo "USE_TESTNET=false" >> "$env_file"
+            echo "Added USE_TESTNET=false to '$env_file'."
+        fi
     fi
 }
 
@@ -79,11 +168,26 @@ run_trading_bot() {
     echo "Trading bot started with PID: $BOT_PID"
     echo "Logs are being written to '$log_file'."
 
-    # Optionally, you can tail the log file to monitor in real-time
+    # Optionally, tail the log file to monitor in real-time
     echo "Press Ctrl+C to stop monitoring the logs."
     echo "Alternatively, check '$log_file' for detailed logs."
 
-    # Wait for the bot process to finish
+    # Tail the log file
+    tail -f "$log_file" &
+    local TAIL_PID=$!
+
+    # Function to handle script termination
+    cleanup() {
+        echo "Terminating trading bot and log monitoring..."
+        kill $BOT_PID 2>/dev/null || true
+        kill $TAIL_PID 2>/dev/null || true
+        exit 0
+    }
+
+    # Trap Ctrl+C and other termination signals
+    trap cleanup SIGINT SIGTERM
+
+    # Wait for the trading bot process to finish
     wait $BOT_PID
 }
 
@@ -107,7 +211,16 @@ update_gitignore
 # Step 4: Activate Virtual Environment
 activate_virtualenv
 
-# Step 5: Run the Trading Bot
+# Step 5: Setup Environment Variables in .env
+setup_env
+
+# Step 6: Install Required Python Packages
+echo "Installing required Python packages..."
+pip install --upgrade pip
+pip install -r requirements.txt
+echo "Python packages installed successfully."
+
+# Step 7: Run the Trading Bot
 run_trading_bot
 
 # =============================================================================

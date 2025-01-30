@@ -1,174 +1,246 @@
-# dashboard.py (Updated)
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import sqlite3
 import os
+import sys
 import json
-from datetime import datetime
-from pytz import timezone
+import logging
+import time
+from datetime import datetime, timezone
 
-# Function to load trades from SQLite
-@st.cache_data(ttl=60)  # Cache data for 60 seconds
-def load_trades(db_path='trading_bot.db'):
-    if not os.path.exists(db_path):
-        st.error(f"Database file '{db_path}' does not exist!")
-        return pd.DataFrame()
-    
-    try:
-        with sqlite3.connect(db_path) as conn:
-            df = pd.read_sql_query("SELECT * FROM trades ORDER BY timestamp DESC", conn)
-        if not df.empty:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-        return df
-    except sqlite3.Error as e:
-        st.error(f"Database error: {e}")
-        return pd.DataFrame()
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import streamlit as st
 
-# Function to load config
-@st.cache_data(ttl=300)  # Cache config for 5 minutes
-def load_config(config_path='config.json'):
-    if not os.path.exists(config_path):
-        st.error(f"Config file '{config_path}' not found!")
-        return {}
-    
+# =============================================================================
+# LOGGING SETUP
+# =============================================================================
+logger = logging.getLogger("CryptoLionBotDashboard")
+logger.setLevel(logging.DEBUG)
+
+# Prevent adding multiple handlers if they already exist
+if not logger.handlers:
+    # Console Formatter for terminal output
+    console_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(console_formatter)
+
+    logger.addHandler(console_handler)
+
+# =============================================================================
+# CONFIG MODELS
+# =============================================================================
+class ATRThresholdModel(BaseModel):
+    LOWER_BOUND: float
+    UPPER_BOUND: float
+
+class SentimentAnalysisModel(BaseModel):
+    ENABLED: bool
+    DATA_SOURCE: List[str]
+    TWEETS_PER_SYMBOL: int
+    SENTIMENT_THRESHOLD_POSITIVE: float
+    SENTIMENT_THRESHOLD_NEGATIVE: float
+    ANALYZER: List[str]
+    TREND_ANALYSIS: bool
+    TREND_WINDOW: int
+
+class StrategyParametersModel(BaseModel):
+    correlation_threshold: Optional[float] = 0.7
+    reference_symbol: Optional[str] = "BTCUSDT"
+    sma_period: Optional[int] = 20
+    atr_period: Optional[int] = 14
+    atr_multiplier: Optional[float] = 1.5
+    kelly_win_rate: Optional[float] = 0.5
+    kelly_win_loss_ratio: Optional[float] = 1.5
+
+class StrategyModel(BaseModel):
+    class_name: str = Field(..., alias="class")
+    DEFAULT_LEVERAGE: int
+    BASE_RISK_PER_TRADE: float
+    ATR_MULTIPLIER: float
+    RISK_REWARD_RATIO: float
+    ADAPTIVE_ATR: bool
+    DYNAMIC_RISK_ADJUSTMENT: bool
+    ATR_THRESHOLD: ATRThresholdModel
+    SENTIMENT_ANALYSIS: SentimentAnalysisModel
+    TRADE_DURATION: int
+    strategy_parameters: Optional[StrategyParametersModel] = None
+
+class RiskParametersModel(BaseModel):
+    DEFAULT_LEVERAGE: int
+    BASE_RISK_PER_TRADE: float
+
+class TradeParametersModel(BaseModel):
+    stop_loss: float
+    take_profit: float
+    trailing_stop_loss: bool
+
+class SymbolModel(BaseModel):
+    symbol: str
+    base_currency: str
+    quote_currency: str
+    strategy: str
+    strategy_parameters: Optional[StrategyParametersModel] = None
+    risk_parameters: RiskParametersModel
+    trade_parameters: TradeParametersModel
+
+class ConfigModel(BaseModel):
+    MIN_NOTIONAL: float
+    STARTING_BALANCE: float
+    STRATEGIES: Dict[str, StrategyModel]
+    ACTIVE_STRATEGY: str
+    SYMBOLS_TO_TRADE: Dict[str, SymbolModel]
+    USE_TESTNET: Optional[bool] = False
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+def load_config(config_path: str) -> ConfigModel:
     try:
         with open(config_path, 'r') as f:
-            config = json.load(f)
+            config_json = json.load(f)
+        config = ConfigModel(**config_json)
+        logger.debug("Configuration loaded and validated successfully.")
         return config
-    except json.JSONDecodeError as e:
-        st.error(f"Error parsing config file: {e}")
-        return {}
-
-# Function to get server time
-def get_server_time(tz_str='UTC'):
-    try:
-        tz = timezone(tz_str)
-        return datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S %Z")
+    except FileNotFoundError:
+        logger.error(f"Configuration file '{config_path}' not found.")
+        sys.exit(1)
+    except ValidationError as ve:
+        logger.error(f"Configuration validation error: {ve}")
+        sys.exit(1)
+    except json.JSONDecodeError as je:
+        logger.error(f"Invalid JSON format in configuration file: {je}")
+        sys.exit(1)
     except Exception as e:
-        st.error(f"Error getting server time: {e}")
-        return "N/A"
+        logger.error(f"Unexpected error loading configuration: {e}")
+        sys.exit(1)
 
-# Sidebar for navigation
-st.sidebar.title("CryptoLion Dashboard")
-page = st.sidebar.radio("Navigate to", ["Overview", "Trade History", "Performance Metrics", "Active Positions"])
+# =============================================================================
+# DASHBOARD FUNCTIONS
+# =============================================================================
+def load_trade_log(file_path: str) -> pd.DataFrame:
+    try:
+        df = pd.read_csv(file_path, parse_dates=["timestamp"])
+        return df
+    except FileNotFoundError:
+        logger.error(f"Trade log file '{file_path}' not found.")
+        return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Error loading trade log: {e}")
+        return pd.DataFrame()
 
-# Add a refresh button
-if st.sidebar.button("Refresh Data"):
-    st.caching.clear_cache()
-    st.experimental_rerun()
+def load_backtest_results(file_path: str) -> pd.DataFrame:
+    try:
+        df = pd.read_csv(file_path)
+        return df
+    except FileNotFoundError:
+        logger.error(f"Backtest results file '{file_path}' not found.")
+        return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Error loading backtest results: {e}")
+        return pd.DataFrame()
 
-# Load data
-trades_df = load_trades()
-config = load_config()
+def plot_pnl_per_symbol(backtest_df: pd.DataFrame):
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x=backtest_df.index, y="Total PnL", data=backtest_df)
+    plt.title("Total PnL per Symbol")
+    plt.xlabel("Symbol")
+    plt.ylabel("PnL")
+    plt.tight_layout()
+    st.pyplot(plt)
+    plt.close()
 
-# Overview Page
-if page == "Overview":
-    st.title("CryptoLion Trading Bot Dashboard")
-    st.write("Welcome to your Trading Bot Dashboard. Monitor your trades and performance in real-time.")
+def plot_trade_pnl(trade_df: pd.DataFrame):
+    if trade_df.empty:
+        st.write("No trades to display.")
+        return
+    trade_df = trade_df[trade_df["action"] == "CLOSE"]
+    if trade_df.empty:
+        st.write("No closed trades to display.")
+        return
+    plt.figure(figsize=(12, 6))
+    sns.histplot(trade_df["pnl"], bins=30, kde=True)
+    plt.title("Distribution of Trade PnL")
+    plt.xlabel("PnL")
+    plt.ylabel("Frequency")
+    plt.tight_layout()
+    st.pyplot(plt)
+    plt.close()
 
-    # Display Current Balance
-    starting_balance = config.get("STARTING_BALANCE", 1000.0)
-    if not trades_df.empty:
-        balance = starting_balance + trades_df['pnl'].sum()
-    else:
-        balance = starting_balance
-    st.metric("Current Balance", f"${balance:,.2f}")
-
-    # Display Server Time
-    server_tz = config.get("SERVER_TIMEZONE", "UTC")
-    server_time = get_server_time(server_tz)
-    st.info(f"Server Time ({server_tz}): {server_time}")
-
-    # Additional Overview Metrics (Optional)
-    if not trades_df.empty:
-        total_trades = len(trades_df)
-        total_pnl = trades_df['pnl'].sum()
-        winning_trades = len(trades_df[trades_df['pnl'] > 0])
-        win_rate = (winning_trades / total_trades) * 100 if total_trades > 0 else 0
-        st.write("### Quick Stats")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Trades", f"{total_trades}")
-        col2.metric("Total PnL", f"${total_pnl:,.2f}")
-        col3.metric("Win Rate", f"{win_rate:.2f}%")
-    else:
-        st.write("No trades executed yet.")
-
-# Trade History Page
-elif page == "Trade History":
-    st.title("Trade History")
-    if not trades_df.empty:
-        st.dataframe(trades_df[['timestamp', 'symbol', 'side', 'quantity', 'entry_price', 'exit_price', 'pnl', 'reason']])
-
-        # Plot PnL Over Time
-        pnl_over_time = trades_df.sort_values('timestamp').copy()
-        pnl_over_time['Cumulative PnL'] = pnl_over_time['pnl'].cumsum()
-        fig = px.line(pnl_over_time, x='timestamp', y='Cumulative PnL', title='Cumulative PnL Over Time')
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("No trades executed yet.")
-
-# Performance Metrics Page
-elif page == "Performance Metrics":
-    st.title("Performance Metrics")
-    if not trades_df.empty:
-        # Win Rate
-        total_trades = len(trades_df)
-        winning_trades = len(trades_df[trades_df['pnl'] > 0])
-        win_rate = (winning_trades / total_trades) * 100 if total_trades > 0 else 0
-        st.metric("Win Rate", f"{win_rate:.2f}% ({winning_trades}/{total_trades})")
-
-        # Total PnL
-        total_pnl = trades_df['pnl'].sum()
-        st.metric("Total PnL", f"${total_pnl:,.2f}")
-
-        # Average PnL per Trade
-        avg_pnl = trades_df['pnl'].mean()
-        st.metric("Average PnL per Trade", f"${avg_pnl:,.2f}")
-
-        # Maximum Drawdown (Optional)
-        pnl_over_time = trades_df.sort_values('timestamp').copy()
-        pnl_over_time['Cumulative PnL'] = pnl_over_time['pnl'].cumsum()
-        pnl_over_time['Peak'] = pnl_over_time['Cumulative PnL'].cummax()
-        pnl_over_time['Drawdown'] = pnl_over_time['Peak'] - pnl_over_time['Cumulative PnL']
-        max_drawdown = pnl_over_time['Drawdown'].max()
-        st.metric("Maximum Drawdown", f"${max_drawdown:,.2f}")
-
-        # Plot Distribution of PnL
-        fig = px.histogram(trades_df, x='pnl', nbins=50, title='PnL Distribution', labels={'pnl': 'PnL ($)'})
-        st.plotly_chart(fig, use_container_width=True)
-
-        # Additional Metrics (Optional)
-        st.write("### Trade Duration")
-        trades_df['duration'] = trades_df['exit_time'] - trades_df['timestamp']  # Assuming 'exit_time' exists
-        if 'duration' in trades_df.columns:
-            fig_duration = px.histogram(trades_df, x='duration', nbins=50, title='Trade Duration Distribution', labels={'duration': 'Duration (seconds)'})
-            st.plotly_chart(fig_duration, use_container_width=True)
+def main_dashboard():
+    st.title("CryptoLionBot Dashboard")
+    
+    # Load Configuration
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    config = load_config(config_path)
+    
+    # Load Trade Log
+    trade_log_path = "trade_log.csv"
+    trade_df = load_trade_log(trade_log_path)
+    
+    # Load Backtest Results
+    backtest_results_path = "backtest_results.csv"  # Modify if different
+    backtest_df = load_backtest_results(backtest_results_path)
+    
+    # Sidebar Navigation
+    st.sidebar.title("Navigation")
+    options = ["Overview", "Trade Log", "Backtest Results", "Performance Metrics"]
+    choice = st.sidebar.radio("Go to", options)
+    
+    if choice == "Overview":
+        st.header("Bot Overview")
+        st.write(f"**Starting Balance:** {config.STARTING_BALANCE}")
+        st.write(f"**Minimum Notional:** {config.MIN_NOTIONAL}")
+        st.write(f"**Number of Symbols Traded:** {len(config.SYMBOLS_TO_TRADE)}")
+        st.write("**Strategies Implemented:**")
+        for strategy in config.STRATEGIES.keys():
+            st.write(f"- {strategy}")
+    
+    elif choice == "Trade Log":
+        st.header("Trade Log")
+        if trade_df.empty:
+            st.write("No trade data available.")
         else:
-            st.info("Trade duration data not available.")
-    else:
-        st.warning("No trades executed yet.")
-
-# Active Positions Page
-elif page == "Active Positions":
-    st.title("Active Positions")
-    if not trades_df.empty:
-        # Assuming active positions have 'exit_price' as NULL or NaN
-        active_positions = trades_df[trades_df['exit_price'].isnull()].copy()
-        if not active_positions.empty:
-            active_positions = active_positions[['timestamp', 'symbol', 'side', 'quantity', 'entry_price', 'pnl', 'reason']]
-            st.dataframe(active_positions.reset_index(drop=True))
-
-            # Plot Unrealized PnL for Active Positions
-            fig = px.bar(active_positions, x='symbol', y='pnl', color='side',
-                         title='Unrealized PnL by Symbol',
-                         labels={'pnl': 'Unrealized PnL ($)', 'symbol': 'Symbol', 'side': 'Side'})
-            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(trade_df)
+            st.download_button(
+                label="Download Trade Log as CSV",
+                data=trade_df.to_csv(index=False).encode('utf-8'),
+                file_name='trade_log.csv',
+                mime='text/csv',
+            )
+    
+    elif choice == "Backtest Results":
+        st.header("Backtest Results")
+        if backtest_df.empty:
+            st.write("No backtest data available.")
         else:
-            st.success("No active positions currently.")
-    else:
-        st.warning("No trades data available.")
+            st.dataframe(backtest_df)
+            plot_pnl_per_symbol(backtest_df)
+            st.download_button(
+                label="Download Backtest Results as CSV",
+                data=backtest_df.to_csv(index=False).encode('utf-8'),
+                file_name='backtest_results.csv',
+                mime='text/csv',
+            )
+    
+    elif choice == "Performance Metrics":
+        st.header("Performance Metrics")
+        if trade_df.empty:
+            st.write("No trade data available.")
+        else:
+            total_pnl = trade_df["pnl"].sum()
+            total_trades = len(trade_df)
+            win_trades = len(trade_df[trade_df["pnl"] > 0])
+            loss_trades = len(trade_df[trade_df["pnl"] < 0])
+            win_rate = (win_trades / loss_trades) * 100 if loss_trades > 0 else 0.0
+    
+            st.metric("Total PnL", f"{total_pnl:.2f}")
+            st.metric("Total Trades", f"{total_trades}")
+            st.metric("Win Trades", f"{win_trades}")
+            st.metric("Loss Trades", f"{loss_trades}")
+            st.metric("Win Rate (%)", f"{win_rate:.2f}%")
+    
+            plot_trade_pnl(trade_df)
 
-# Footer
-st.markdown("---")
-st.write("© 2025 CryptoLion. All rights reserved.")
+if __name__ == "__main__":
+    main_dashboard()
