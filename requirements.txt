@@ -1,15 +1,4 @@
-python-binance
-ta
+numpy
 pandas
-pandas-ta
-scikit-learn
-xgboost
-textblob
-pydantic
-python-json-logger
-termcolor
-python-dotenv
-seaborn
 matplotlib
-altair
-streamlit
+seaborn
