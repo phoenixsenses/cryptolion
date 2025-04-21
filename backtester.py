@@ -27,6 +27,7 @@ import pandas as pd
 # ---------------- Logging Setup ----------------
 logger = logging.getLogger(__name__)
 
+
 # ----------------------- Helpers -----------------------
 def load_df(path: str | Path) -> pd.DataFrame:
     logger.debug(f"Loading CSV {path}")
@@ -40,10 +41,11 @@ def load_df(path: str | Path) -> pd.DataFrame:
         logger.error(f"Missing date/timestamp in {path}")
         raise ValueError(f"Missing date/timestamp in {path}")
     df = df.sort_values("timestamp").reset_index(drop=True)
-    if not all(c in df.columns for c in ("open","high","low","close","volume")):
+    if not all(c in df.columns for c in ("open", "high", "low", "close", "volume")):
         logger.error(f"Missing OHLCV in {path}")
         raise ValueError(f"Missing OHLCV columns in {path}")
     return df
+
 
 # ---------------- Simulation & Metrics ----------------
 def simulate(df: pd.DataFrame, params: Dict) -> tuple[pd.DataFrame, Dict]:
@@ -80,7 +82,7 @@ def simulate(df: pd.DataFrame, params: Dict) -> tuple[pd.DataFrame, Dict]:
 
     for i in range(1, len(df)):
         price = df.at[i, "close"]
-        prev_price = df.at[i-1, "close"]
+        prev_price = df.at[i - 1, "close"]
         macd = df.at[i, "macd"]
         sigl = df.at[i, "signal"]
         # entry
@@ -101,7 +103,7 @@ def simulate(df: pd.DataFrame, params: Dict) -> tuple[pd.DataFrame, Dict]:
                 position = 0
         # calculate return
         r = (price - prev_price) / prev_price * position
-        trades = abs(position - df.at[i-1, "pos"] if i-1 >= 0 else position)
+        trades = abs(position - df.at[i - 1, "pos"] if i - 1 >= 0 else position)
         r -= fee * trades
         r -= slip * trades
         ret.append(r)
@@ -125,12 +127,15 @@ def simulate(df: pd.DataFrame, params: Dict) -> tuple[pd.DataFrame, Dict]:
     logger.debug(f"Metrics: {metrics}")
     return df, metrics
 
+
 # Worker for optimize
+
 
 def _optimize_worker(task):
     df, params = task
     _, m = simulate(df, params)
     return {**params, **m}
+
 
 # ---------------- Commands ----------------
 def backtest_cmd(args):
@@ -138,14 +143,25 @@ def backtest_cmd(args):
     params = json.loads(args.params)
     if args.exit:
         params['exit'] = args.exit
-        if args.atr_mult is not None: params['atr_mult'] = args.atr_mult
-        if args.profit_target is not None: params['profit_target'] = args.profit_target
-        if args.time_stop is not None: params['time_stop'] = args.time_stop
+        if args.atr_mult is not None:
+            params['atr_mult'] = args.atr_mult
+        if args.profit_target is not None:
+            params['profit_target'] = args.profit_target
+        if args.time_stop is not None:
+            params['time_stop'] = args.time_stop
     df_sim, metrics = simulate(df, params)
     logger.info(f"Backtest metrics: {metrics}")
     if args.save_plots:
-        plt.figure(); plt.plot(df_sim['timestamp'], df_sim['equity']); plt.title('Equity'); plt.savefig('equity.png'); plt.close()
-        plt.figure(); plt.hist(df_sim['ret'], bins=50); plt.title('Return Distribution'); plt.savefig('ret_hist.png'); plt.close()
+        plt.figure()
+        plt.plot(df_sim['timestamp'], df_sim['equity'])
+        plt.title('Equity')
+        plt.savefig('equity.png')
+        plt.close()
+        plt.figure()
+        plt.hist(df_sim['ret'], bins=50)
+        plt.title('Return Distribution')
+        plt.savefig('ret_hist.png')
+        plt.close()
         logger.info('Saved plots → equity.png, ret_hist.png')
 
 
@@ -161,10 +177,13 @@ def optimize_cmd(args):
 
 
 def batch_cmd(args):
-    out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     for f in Path(args.folder).glob('*.csv'):
         try:
-            ns = argparse.Namespace(file=str(f), param_grid=args.param_grid, processes=args.processes, output=out_dir/f"{f.stem}_grid.csv")
+            ns = argparse.Namespace(
+                file=str(f), param_grid=args.param_grid, processes=args.processes, output=out_dir / f"{f.stem}_grid.csv"
+            )
             optimize_cmd(ns)
         except Exception as e:
             logger.warning(f"Skipping {f.name}: {e}")
@@ -172,28 +191,42 @@ def batch_cmd(args):
 
 def walk_cmd(args):
     df = load_df(args.file)
-    split = int(len(df)*args.train_frac)
+    split = int(len(df) * args.train_frac)
     train = df.iloc[:split].reset_index(drop=True)
     test = df.iloc[split:].reset_index(drop=True)
     grid = json.loads(args.param_grid)
     combos = [dict(zip(grid.keys(), vals)) for vals in itertools.product(*grid.values())]
     best = max(combos, key=lambda c: simulate(train, c)[1][args.metric])
     logger.info(f"Best params: {best}")
-    sim_tr,_ = simulate(train, best)
-    sim_te,_ = simulate(test, best)
-    out_df = pd.DataFrame([{**simulate(train,best)[1],'set':'train'},{**simulate(test,best)[1],'set':'test'}])
-    out_df.to_csv(args.output,index=False)
+    sim_tr, _ = simulate(train, best)
+    sim_te, _ = simulate(test, best)
+    out_df = pd.DataFrame([{**simulate(train, best)[1], 'set': 'train'}, {**simulate(test, best)[1], 'set': 'test'}])
+    out_df.to_csv(args.output, index=False)
     logger.info(f"Saved walk-forward results to {args.output}")
     if args.plot:
-        plt.figure(); plt.plot(sim_tr['timestamp'],sim_tr['equity'],label='Train'); plt.plot(sim_te['timestamp'],sim_te['equity'],label='Test'); plt.legend(); plt.title('Walk-forward Equity'); plt.savefig(args.output.replace('.csv','.png')); plt.close()
+        plt.figure()
+        plt.plot(sim_tr['timestamp'], sim_tr['equity'], label='Train')
+        plt.plot(sim_te['timestamp'], sim_te['equity'], label='Test')
+        plt.legend()
+        plt.title('Walk-forward Equity')
+        plt.savefig(args.output.replace('.csv', '.png'))
+        plt.close()
         logger.info(f"Saved equity plot to {args.output.replace('.csv','.png')}")
 
 
 def report_cmd(args):
     df = pd.read_csv(args.grid_file)
-    pt = df.pivot_table(index=args.x,columns=args.y,values=args.metric)
-    plt.figure(); __import__('seaborn').heatmap(pt,annot=True,fmt='.2f'); plt.title(f"{args.metric} heatmap"); plt.savefig(args.output); plt.close()
-    plt.figure(); plt.scatter(df[args.x],df[args.y],c=df[args.metric]); plt.colorbar(label=args.metric); plt.savefig(args.output.replace('.png','_scatter.png')); plt.close()
+    pt = df.pivot_table(index=args.x, columns=args.y, values=args.metric)
+    plt.figure()
+    __import__('seaborn').heatmap(pt, annot=True, fmt='.2f')
+    plt.title(f"{args.metric} heatmap")
+    plt.savefig(args.output)
+    plt.close()
+    plt.figure()
+    plt.scatter(df[args.x], df[args.y], c=df[args.metric])
+    plt.colorbar(label=args.metric)
+    plt.savefig(args.output.replace('.png', '_scatter.png'))
+    plt.close()
     logger.info(f"Saved report: {args.output} & scatter")
 
 
@@ -275,18 +308,13 @@ def resample_cmd(args):
             logger.warning(f"Skipping {f.name}: {e}")
             continue
         rule = args.rule
-        agg = {
-            "open": "first",
-            "high": "max",
-            "low": "min",
-            "close": "last",
-            "volume": "sum"
-        }
+        agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
         res = df.resample(rule).agg(agg).dropna()
         out_file = dst / f.name
         res.reset_index().to_csv(out_file, index=False)
         logger.info(f"Resampled {f.name} -> {out_file} at rule={rule}")
     logger.info(f"Resampled files to {args.out_dir}")
+
 
 # ---------------- CLI Setup ----------------
 def main():
@@ -300,7 +328,7 @@ def main():
     p.add_argument('--file', required=True, help='Path to OHLCV CSV')
     p.add_argument('--params', required=True, help='JSON string of strategy params')
     p.add_argument('--save-plots', action='store_true', help='Save equity and return histogram plots')
-    p.add_argument('--exit', choices=['atr','profit','time'], help='Exit rule for positions')
+    p.add_argument('--exit', choices=['atr', 'profit', 'time'], help='Exit rule for positions')
     p.add_argument('--atr-mult', type=float, help='ATR multiplier for stop-loss')
     p.add_argument('--profit-target', type=float, help='Profit target fraction to exit')
     p.add_argument('--time-stop', type=int, help='Bar count-based exit')
@@ -344,7 +372,7 @@ def main():
     # portfolio
     p = sub.add_parser('portfolio', help='Aggregate multiple symbols into portfolio equity')
     p.add_argument('--folder', required=True, help='Folder containing symbol CSVs')
-    p.add_argument('--weight', choices=['equal','vol'], default='equal', help='Asset weighting scheme')
+    p.add_argument('--weight', choices=['equal', 'vol'], default='equal', help='Asset weighting scheme')
     p.add_argument('--rebalance', default='M', help='Rebalance frequency (pandas rule)')
     p.add_argument('--fee', type=float, default=0.0, help='Per-trade fee fraction')
     p.add_argument('--slippage', type=float, default=0.0, help='Per-trade slippage fraction')
@@ -361,9 +389,11 @@ def main():
     p.set_defaults(func=resample_cmd)
 
     args = parser.parse_args()
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
-                        format='%(asctime)s %(levelname)s %(message)s')
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO, format='%(asctime)s %(levelname)s %(message)s'
+    )
     args.func(args)
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     main()
