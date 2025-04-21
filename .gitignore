@@ -1,3 +1,25 @@
-.env
-trading_bot.log
-bot_output.log
+# Virtual env
+.venv/
+venv/
+env/
+__pycache__/
+
+# Python artifacts
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Logs, temp files
+*.log
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
